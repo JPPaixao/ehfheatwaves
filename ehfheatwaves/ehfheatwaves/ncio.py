@@ -292,7 +292,11 @@ def save_yearly(
     lonkey = [vrbl in LON_NAMES for vrbl in tempnc.variables.keys()].index(True)
     lonvname = list(tempnc.variables.keys())[lonkey]
     space = (tempnc.dimensions[latvname].__len__(), tempnc.dimensions[lonvname].__len__())
-    yearlyout = nc.Dataset('%s_heatwaves_%s_%s_%s_yearly_%s.nc'%(definition, model, experiment, rip, options.season), 'w')
+
+    if options.nohw: hwstr = ''
+    else: hwstr = 'heatwaves'
+
+    yearlyout = nc.Dataset('%s_%s_%s_%s_%s_yearly_%s.nc'%(definition, hwstr, model, experiment, rip, options.season), 'w')
     yearlyout.createDimension('time', size=None)
     yearlyout.createDimension('lon', tempnc.dimensions[lonvname].__len__())
     yearlyout.createDimension('lat', tempnc.dimensions[latvname].__len__())
@@ -344,13 +348,14 @@ def save_yearly(
     setattr(otpct, 'missing_value', const.MISSING_VAL)
     setattr(otpct, 'valid_range', (-20,100))
     HWAout = yearlyout.createVariable('HWA_%s'%(definition), 'f8', ('time','lat','lon'), fill_value=const.FILL_VAL)
-    setattr(HWAout, 'long_name', 'Heatwave Amplitude')
+    setattr(HWAout, 'long_name', f'Heatwave Amplitude')
     if definition=='tx90pct':
         setattr(HWAout, 'units', 'degC')
     elif definition=='tn90pct':
         setattr(HWAout, 'units', 'degC')
     elif definition=='EHF':
         setattr(HWAout, 'units', 'degC2')
+
     setattr(HWAout, 'description', 'Peak of the hottest heatwave per year')
     setattr(HWAout, 'missing_value', const.MISSING_VAL)
     setattr(HWAout, 'valid_range', (-30, 400))
@@ -360,7 +365,7 @@ def save_yearly(
         setattr(HWMout, 'units', 'degC')
     elif definition=='tn90pct':
         setattr(HWMout, 'units', 'degC')
-    elif definition=='EHF':
+    elif definition=='EHF' or definition=='ECF':
         setattr(HWMout, 'units', 'degC2')
     setattr(HWMout, 'description', 'Average magnitude of the yearly heatwave')
     setattr(HWMout, 'missing_value', const.MISSING_VAL)
@@ -481,7 +486,11 @@ def save_daily(
     latvname = list(tempnc.variables.keys())[latkey]
     lonkey = [vrbl in LON_NAMES for vrbl in tempnc.variables.keys()].index(True)
     lonvname = list(tempnc.variables.keys())[lonkey]
-    dailyout = nc.Dataset('%s_heatwaves_%s_%s_%s_daily.nc'%(defn, model, experiment, rip), mode='w')
+
+    if options.nohw: hwstr = ''
+    else: hwstr = 'heatwaves'
+
+    dailyout = nc.Dataset('%s_%s_%s_%s_%s_daily.nc'%(defn, hwstr, model, experiment, rip), mode='w')
     dailyout.createDimension('time', size=None)
     dailyout.createDimension('lon', tempnc.dimensions[lonvname].__len__())
     dailyout.createDimension('lat', tempnc.dimensions[latvname].__len__())
@@ -525,6 +534,9 @@ def save_daily(
     if defn=='EHF':
         setattr(oehf, 'long_name', 'Excess Heat Factor')
         setattr(oehf, 'units', 'degC2')
+    elif defn=='ECF':
+        setattr(oehf, 'long_name', 'Excess Cold Factor')
+        setattr(oehf, 'units', 'degC2')
     elif defn=='tx90pct':
         setattr(oehf, 'long_name', 'Temperature Exceeding tx90pct')
         setattr(oehf, 'units', 'C')
@@ -532,32 +544,41 @@ def save_daily(
         setattr(oehf, 'long_name', 'Temperature Exceeding tn90pct')
         setattr(oehf, 'units', 'C')
     setattr(oehf, 'missing_value', const.MISSING_VAL)
-    oevent = dailyout.createVariable('event', 'f8', ('time','lat','lon'), fill_value=const.FILL_VAL)
-    setattr(oevent, 'long_name', 'Event indicator')
-    setattr(oevent, 'description', 'Indicates whether a heatwave is happening on that day')
-    setattr(oevent, 'missing_value', const.MISSING_VAL)
-    oends = dailyout.createVariable('ends', 'f8', ('time','lat','lon'), fill_value=const.FILL_VAL)
-    setattr(oends, 'long_name', 'Duration at start of heatwave')
-    setattr(oends, 'units', 'days')
-    setattr(oends, 'missing_value', const.MISSING_VAL)
-    otime[:] = range(0,original_shape[0],1)
+
     olat[:] = tempnc.variables[latvname][:]
     olon[:] = tempnc.variables[lonvname][:]
+    otime[:] = range(0,original_shape[0],1)
     exceed[exceed.mask==True] = const.MISSING_VAL
+
+    if not options.nohw:
+        oevent = dailyout.createVariable('event', 'f8', ('time','lat','lon'), fill_value=const.FILL_VAL)
+        setattr(oevent, 'long_name', 'Event indicator')
+        setattr(oevent, 'description', 'Indicates whether a heatwave is happening on that day')
+        setattr(oevent, 'missing_value', const.MISSING_VAL)
+        oends = dailyout.createVariable('ends', 'f8', ('time','lat','lon'), fill_value=const.FILL_VAL)
+        setattr(oends, 'long_name', 'Duration at start of heatwave')
+        setattr(oends, 'units', 'days')
+        setattr(oends, 'missing_value', const.MISSING_VAL)
+
     if options.maskfile:
         dummy_array = np.ones(original_shape)*const.FILL_VAL
         dummy_array[:,mask] = exceed
         oehf[:] = dummy_array.copy()
-        dummy_array = np.ones(original_shape)*const.FILL_VAL
-        dummy_array[:,mask] = event
-        oevent[:] = dummy_array.copy()
-        dummy_array = np.ones(original_shape)*const.FILL_VAL
-        dummy_array[:,mask] = ends
-        oends[:] = dummy_array.copy()
+
+        if not options.nohw:
+            dummy_array = np.ones(original_shape)*const.FILL_VAL
+            dummy_array[:,mask] = event
+            oevent[:] = dummy_array.copy()
+            dummy_array = np.ones(original_shape)*const.FILL_VAL
+            dummy_array[:,mask] = ends
+            oends[:] = dummy_array.copy()
     else:
         oehf[:] = exceed
-        oevent[:] = event
-        oends[:] = ends
+
+        if not options.nohw:
+            oevent[:] = event
+            oends[:] = ends
+
     tempnc.close()
     dailyout.close()
 

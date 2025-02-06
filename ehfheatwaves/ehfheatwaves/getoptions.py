@@ -68,6 +68,13 @@ def parse_arguments(arguments):
     parser.add_option('--invert-mask', action='store_true', dest='invertmask', help='Invert the land-sea mask.')
     parser.add_option('--flip-mask', action='store_true', dest='flipmask', help='Flip the mask upside down by latitude.')
 
+    ###########################################################################################################################
+    ###  ADDED: ECF option
+    ###########################################################################################################################
+    parser.add_option('--ecf', action="store_true", default=False, dest='ecf', help='Compute ECF instead of EHF')
+    parser.add_option('--nohw', action="store_true", default=False, dest='nohw', help='Supress HW output')
+    ###########################################################################################################################
+
     # Parse command line arguments to the options object
     global options
     options, args = parser.parse_args(arguments)

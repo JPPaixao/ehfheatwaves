@@ -461,15 +461,30 @@ def main():
         if options.keeptmin:
             tmin = tmin[:,mask]
 
-    if options.verbose: print("Caclulating definition")
-    # Calculate EHF
+    if options.verbose: print("Calculating definition")
+
+    # Calculate EHF or ECF
     if not options.noehf:
-        EHF = np.ma.ones(tave.shape)*np.nan
-        for i in range(32, tave.shape[0]):
-            EHIaccl = tave[i-2:i+1,...].sum(axis=0)/3.0 - tave[i-32:i-2,...].sum(axis=0)/30.0
-            EHIsig = tave[i-2:i+1,...].sum(axis=0)/3.0 - tpct[i-timedata.daysinyear*int((i+1)/timedata.daysinyear),...]
-            EHF[i,...] = np.ma.maximum(EHIaccl, 1.0)*EHIsig
-        EHF[EHF<0] = 0
+        EHF = np.ma.ones(tave.shape) * np.nan
+
+        if options.ecf:
+            ##########################################################################################################################
+            ##  ADDED: compute ECF  # TODO: change the names from EHF to ECF
+            ##########################################################################################################################
+
+            for i in range(32, tave.shape[0]):
+                ECFaccl = tave[i-2:i+1, ...].sum(axis=0) / 3.0 - tave[i-32:i-2, ...].sum(axis=0) / 30.0
+                ECFsig = tave[i-2:i+1, ...].sum(axis=0) / 3.0 - tpct[i-timedata.daysinyear * int((i + 1) / timedata.daysinyear), ...]
+                EHF[i, ...] = -ECFsig * np.ma.minimum(ECFaccl, -1.0)
+            EHF[EHF>0] = 0
+            ##########################################################################################################################
+        else:
+            for i in range(32, tave.shape[0]):
+                EHIaccl = tave[i-2:i+1,...].sum(axis=0)/3.0 - tave[i-32:i-2,...].sum(axis=0)/30.0
+                EHIsig = tave[i-2:i+1,...].sum(axis=0)/3.0 - tpct[i-timedata.daysinyear*int((i+1)/timedata.daysinyear),...]
+                EHF[i,...] = np.ma.maximum(EHIaccl, 1.0)*EHIsig
+            EHF[EHF<0] = 0
+
     if options.ehi:
         EHIaccl = np.ma.ones(tave.shape)*np.nan
         EHIsig = np.ma.ones(tave.shape)*np.nan
@@ -477,27 +492,31 @@ def main():
             EHIaccl[i,...] = tave[i-2:i+1,...].sum(axis=0)/3.0 - tave[i-32:i-2,...].sum(axis=0)/30.0
             EHIsig[i,...] = tave[i-2:i+1,...].sum(axis=0)/3.0 - tpct[i-timedata.daysinyear*int((i+1)/timedata.daysinyear),...]
 
-    # Tx90pc exceedences
-    if options.keeptmin or options.keeptmax:
-        if options.keeptmax:
-            txexceed = np.ma.ones(tmax.shape)*np.nan
-            for i in range(0, tmax.shape[0]):
-                idoy = i-timedata.daysinyear*int((i+1)/timedata.daysinyear)
-                txexceed[i,...] = tmax[i,...]>txpct[idoy,...]
-            txexceed[txexceed>0] = tmax[txexceed>0]
-            txexceed[txexceed==0] = np.nan # need nans to be identified correctly
-        if options.keeptmin:
-            tnexceed = np.ma.ones(tmin.shape)*np.nan
-            for i in range(0, tmin.shape[0]):
-                idoy = i-timedata.daysinyear*int((i+1)/timedata.daysinyear)
-                tnexceed[i,...] = tmin[i,...]>tnpct[idoy,...]
-            tnexceed[tnexceed>0] = tmin[tnexceed>0]
-            tnexceed[tnexceed==0] = np.nan # need nans to be identified correctly
+    if not options.nohw:
+        # Tx90pc exceedences
+        if options.keeptmin or options.keeptmax:
+            if options.keeptmax:
+                txexceed = np.ma.ones(tmax.shape)*np.nan
+                for i in range(0, tmax.shape[0]):
+                    idoy = i-timedata.daysinyear*int((i+1)/timedata.daysinyear)
+                    txexceed[i,...] = tmax[i,...]>txpct[idoy,...]
+                txexceed[txexceed>0] = tmax[txexceed>0]
+                txexceed[txexceed==0] = np.nan # need nans to be identified correctly
+            if options.keeptmin:
+                tnexceed = np.ma.ones(tmin.shape)*np.nan
+                for i in range(0, tmin.shape[0]):
+                    idoy = i-timedata.daysinyear*int((i+1)/timedata.daysinyear)
+                    tnexceed[i,...] = tmin[i,...]>tnpct[idoy,...]
+                tnexceed[tnexceed>0] = tmin[tnexceed>0]
+                tnexceed[tnexceed==0] = np.nan # need nans to be identified correctly
 
-    # Calculate daily output
-    if options.dailyout or options.dailyout: event, ends = identify_hw(EHF)
-    if options.tx90pcd: event_tx, ends_tx = identify_hw(txexceed)
-    if options.tn90pcd: event_tn, ends_tn = identify_hw(tnexceed)
+        # Calculate daily output
+        if options.dailyout or options.dailyout: event, ends = identify_hw(EHF)
+        if options.tx90pcd: event_tx, ends_tx = identify_hw(txexceed)
+        if options.tn90pcd: event_tn, ends_tn = identify_hw(tnexceed)
+    else:
+        event = np.empty((0,0,0))
+        ends = np.empty((0,0,0))
 
     timedata.nyears = len(range(timedata.first_year, timedata.daylast.year + 1))
 
@@ -507,26 +526,33 @@ def main():
         # Split by latitude
         north = (grid.lats>0).any()
         south = (grid.lats<=0).any()
+
         if not options.noehf:
             HWA_EHF, HWM_EHF, HWN_EHF, HWF_EHF, HWD_EHF, HWT_EHF = split_hemispheres(
                     EHF,
                     north,
                     south,
                     )
-        if options.tx90pc:
-            HWA_tx, HWM_tx, HWN_tx, HWF_tx, HWD_tx, HWT_tx = split_hemispheres(
-                    txexceed,
-                    north,
-                    south,
-                    )
-        if options.tn90pc:
-            HWA_tn, HWM_tn, HWN_tn, HWF_tn, HWD_tn, HWT_tn = split_hemispheres(
-                    tnexceed,
-                    north,
-                    south,
-                    )
+
+        if not options.nohw:
+            if options.tx90pc:
+                HWA_tx, HWM_tx, HWN_tx, HWF_tx, HWD_tx, HWT_tx = split_hemispheres(
+                        txexceed,
+                        north,
+                        south,
+                        )
+            if options.tn90pc:
+                HWA_tn, HWM_tn, HWN_tn, HWF_tn, HWD_tn, HWT_tn = split_hemispheres(
+                        tnexceed,
+                        north,
+                        south,
+                        )
 
     if options.verbose: print("Saving")
+
+    if options.ecf: definition = "ECF"
+    else: definition = "EHF"
+
     # Save yearly data to netcdf
     if options.yearlyout:
         if not options.noehf:
@@ -538,39 +564,40 @@ def main():
                     HWD_EHF,
                     HWT_EHF,
                     tpct,
-                    "EHF",
+                    definition,
                     timedata,
                     options,
                     mask,
                     )
-        if options.tx90pc:
-            ncio.save_yearly(
-                    HWA_tx,
-                    HWM_tx,
-                    HWN_tx,
-                    HWF_tx,
-                    HWD_tx,
-                    HWT_tx,
-                    txpct,
-                    "tx90pct",
-                    timedata,
-                    options,
-                    mask,
-                    )
-        if options.tn90pc:
-            ncio.save_yearly(
-                    HWA_tn,
-                    HWM_tn,
-                    HWN_tn,
-                    HWF_tn,
-                    HWD_tn,
-                    HWT_tn,
-                    tnpct,
-                    "tn90pct",
-                    timedata,
-                    options,
-                    mask,
-                    )
+        if not options.nohw:
+            if options.tx90pc:
+                ncio.save_yearly(
+                        HWA_tx,
+                        HWM_tx,
+                        HWN_tx,
+                        HWF_tx,
+                        HWD_tx,
+                        HWT_tx,
+                        txpct,
+                        "tx90pct",
+                        timedata,
+                        options,
+                        mask,
+                        )
+            if options.tn90pc:
+                ncio.save_yearly(
+                        HWA_tn,
+                        HWM_tn,
+                        HWN_tn,
+                        HWF_tn,
+                        HWD_tn,
+                        HWT_tn,
+                        tnpct,
+                        "tn90pct",
+                        timedata,
+                        options,
+                        mask,
+                        )
 
     # Save daily data to netcdf
     if options.dailyout:
@@ -583,30 +610,31 @@ def main():
                     timedata,
                     original_shape,
                     mask,
-                    defn='EHF',
+                    defn=definition,
                     )
-        if options.tx90pcd:
-            ncio.save_daily(
-                    txexceed,
-                    event_tx,
-                    ends_tx,
-                    options,
-                    timedata,
-                    original_shape,
-                    mask,
-                    defn='tx90pct',
-                    )
-        if options.tn90pcd:
-            ncio.save_daily(
-                    tnexceed,
-                    event_tn,
-                    ends_tn,
-                    options,
-                    timedata,
-                    original_shape,
-                    mask,
-                    defn='tn90pct',
-                    )
+        if not options.nohw:
+            if options.tx90pcd:
+                ncio.save_daily(
+                        txexceed,
+                        event_tx,
+                        ends_tx,
+                        options,
+                        timedata,
+                        original_shape,
+                        mask,
+                        defn='tx90pct',
+                        )
+            if options.tn90pcd:
+                ncio.save_daily(
+                        tnexceed,
+                        event_tn,
+                        ends_tn,
+                        options,
+                        timedata,
+                        original_shape,
+                        mask,
+                        defn='tn90pct',
+                        )
 
     # save EHIs
     if options.ehi:
